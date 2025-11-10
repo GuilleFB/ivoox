@@ -1,0 +1,21 @@
+# General
+# ------------------------------------------------------------------------------
+USE_DOCKER=yes
+IPYTHONDIR=/app/.ipython
+# Redis
+# ------------------------------------------------------------------------------
+# Para el Caché de Django (DB 2)
+REDIS_URL=redis://redis:6379/2
+
+# Para la Cola de Tareas de Celery (DB 0)
+CELERY_BROKER_URL=redis://redis:6379/0
+
+# Para los Resultados de Tareas de Celery (DB 1)
+CELERY_RESULT_BACKEND=redis://redis:6379/1
+
+# Celery
+# ------------------------------------------------------------------------------
+
+# Flower
+CELERY_FLOWER_USER=debug
+CELERY_FLOWER_PASSWORD=debug

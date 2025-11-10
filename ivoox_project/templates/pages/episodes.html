@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% load i18n %}
+
+{% block content %}
+  <div class="container">
+    <h1 class="my-4">{{ podcast_name }}</h1>
+    <div id="episodes-container" data-url="{{ podcast_url }}">
+      <div id="loading-spinner" class="text-center my-5">
+        <div class="spinner-border text-primary"
+             style="width: 3rem;
+                    height: 3rem"
+             role="status">
+          <span class="visually-hidden">{% trans "Buscando episodios..." %}</span>
+        </div>
+        <p id="spinner-message" class="mt-2">{% trans "Buscando episodios... Esto puede tardar un momento." %}</p>
+      </div>
+      <div id="results-list" class="list-group"></div>
+      <div id="error-message" class="alert alert-danger" style="display: none;"></div>
+    </div>
+  </div>
+{% endblock content %}
+{% block page_js %}
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+
+      // --- 1. OBTENER ELEMENTOS ---
+      const container = document.getElementById("episodes-container");
+      const spinner = document.getElementById("loading-spinner");
+      const spinnerMessage = document.getElementById("spinner-message");
+      const resultsList = document.getElementById("results-list");
+      const errorMessage = document.getElementById("error-message");
+
+      const podcastUrl = container.dataset.url;
+
+      // URLs de nuestras APIs
+      const dataApiUrl = `{% url 'api_episodes_data' %}?url=${encodeURIComponent(podcastUrl)}`;
+      const statusApiBaseUrl = `{% url 'api_task_status' %}`;
+
+
+      // --- 2. FUNCIÓN PARA MOSTRAR RESULTADOS ---
+      function renderResults(mp3Links) {
+        spinner.style.display = 'none'; // Ocultar spinner
+
+        if (mp3Links && mp3Links.length > 0) {
+          const fragment = document.createDocumentFragment();
+          mp3Links.forEach(link => {
+            let a = document.createElement('a');
+            a.href = link.mp3_url;
+            a.className = 'list-group-item list-group-item-action d-flex align-items-center';
+            a.target = '_blank';
+
+            let img = document.createElement('img');
+            img.src = link.thumbnail;
+            img.className = 'me-3';
+            img.style.width = '60px';
+            img.alt = 'Thumbnail';
+            img.loading = 'lazy';
+
+            let titleDiv = document.createElement('div');
+            titleDiv.textContent = link.title;
+
+            a.appendChild(img);
+            a.appendChild(titleDiv);
+            fragment.appendChild(a);
+          });
+          resultsList.appendChild(fragment);
+        } else {
+          showError("{% trans 'No se encontraron episodios para este podcast.' %}");
+        }
+      }
+
+      // --- 3. FUNCIÓN PARA MOSTRAR ERRORES ---
+      function showError(message) {
+        spinner.style.display = 'none';
+        errorMessage.textContent = message;
+        errorMessage.style.display = 'block';
+      }
+
+      // --- 4. FUNCIÓN DE VIGILANCIA (POLLING) ---
+      function pollTaskStatus(taskId) {
+        const statusUrl = `${statusApiBaseUrl}?task_id=${taskId}`;
+
+        fetch(statusUrl)
+          .then(response => response.json())
+          .then(data => {
+            if (data.status === 'SUCCESS') {
+              // ¡ÉXITO! La tarea ha terminado.
+              spinnerMessage.textContent = "{% trans '¡Episodios encontrados! Cargando...' %}";
+              renderResults(data.data);
+            } else if (data.status === 'ERROR') {
+              // ¡FALLO! La tarea ha fallado.
+              showError(data.message || "{% trans 'La tarea de scraping ha fallado en el servidor.' %}");
+            } else {
+              // 'PROCESSING'
+              // La tarea sigue en curso. Esperamos 5 seg y volvemos a preguntar.
+              spinnerMessage.textContent = "{% trans 'La tarea está en proceso... (puede tardar varios minutos)' %}";
+              setTimeout(() => pollTaskStatus(taskId), 5000); // 5 segundos
+            }
+          })
+          .catch(error => {
+            console.error("Error de red durante el polling:", error);
+            showError("{% trans 'Error de red. No se puede contactar al servidor.' %}");
+          });
+      }
+
+      // --- 5. INICIO: LLAMAR A LA API DE DATOS ---
+      fetch(dataApiUrl)
+        .then(response => {
+          if (!response.ok) throw new Error("Error inicial del servidor");
+          return response.json();
+        })
+        .then(data => {
+          if (data.status === 'SUCCESS') {
+            // ¡Cache HIT! Mostramos los datos al instante.
+            renderResults(data.data);
+          } else if (data.status === 'PROCESSING') {
+            // ¡Cache MISS! Iniciamos la vigilancia (polling).
+            spinnerMessage.textContent = "{% trans 'Iniciando tarea de scraping. Esto puede tardar varios minutos...' %}";
+            pollTaskStatus(data.task_id);
+          } else {
+            // Otro tipo de error (ej. URL no válida)
+            showError(data.message || "{% trans 'Ha ocurrido un error inesperado.' %}");
+          }
+        })
+        .catch(error => {
+          console.error("Error al llamar a api_episodes_data:", error);
+          showError("{% trans 'No se pudo iniciar la búsqueda de episodios.' %}");
+        });
+
+    });
+  </script>
+{% endblock page_js %}
