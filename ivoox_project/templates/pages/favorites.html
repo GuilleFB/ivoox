@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% load i18n %}
+
+{% block content %}
+  <div class="container">
+    <h1 class="my-4">{% trans "Mis Podcasts Favoritos" %}</h1>
+    <div id="results-list" class="list-group">
+      {% if favorite_list %}
+        {% for fav in favorite_list %}
+          <div class="list-group-item list-group-item-action d-flex align-items-center">
+            <img src="{{ fav.thumbnail_url }}"
+                 class="me-3"
+                 style="width: 60px"
+                 alt="Thumbnail"
+                 loading="lazy" />
+            <a href="{% url 'episodes' %}?url={{ fav.ivoox_url }}&name={{ fav.name }}"
+               class="flex-grow-1">{{ fav.name }}</a>
+            <form method="post" action="{% url 'toggle_favorite' %}" class="ms-auto">
+              {% csrf_token %}
+              <input type="hidden" name="ivoox_id" value="{{ fav.ivoox_id }}" />
+              <input type="hidden" name="name" value="{{ fav.name }}" />
+              <input type="hidden" name="ivoox_url" value="{{ fav.ivoox_url }}" />
+              <input type="hidden" name="thumbnail_url" value="{{ fav.thumbnail_url }}" />
+              <button type="submit" class="btn btn-sm btn-danger">{% trans "Quitar" %}</button>
+            </form>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p>{% trans "Aún no has guardado ningún podcast. ¡Usa el botón de 'Guardar' en la búsqueda!" %}</p>
+      {% endif %}
+    </div>
+  </div>
+{% endblock content %}

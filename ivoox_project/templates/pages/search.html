@@ -2,6 +2,10 @@
 
 {% load i18n %}
 
+{% block head_extra %}
+  {# Esta es la magia: si hay una tarea, recarga la página cada 5 seg #}
+  {% if task_id %}<meta http-equiv="refresh" content="5" />{% endif %}
+{% endblock head_extra %}
 {% block content %}
   <div class="container">
     <h1 class="my-4">{% trans "Buscar Podcast" %}</h1>
@@ -17,154 +21,57 @@
         </button>
       </div>
     </form>
-    <div id="search-container" data-query="{{ query }}">
-      <div id="search-status" style="display: none;">
-        <div id="loading-spinner" class="text-center my-5">
-          <div class="spinner-border text-primary"
-               style="width: 3rem;
-                      height: 3rem"
-               role="status">
-            <span class="visually-hidden">{% trans "Buscando..." %}</span>
+    <div id="search-container">
+      {% if error_message %}
+        <div id="error-message" class="alert alert-danger">{{ error_message }}</div>
+      {% elif task_id %}
+        <div id="search-status">
+          <div id="loading-spinner" class="text-center my-5">
+            <div class="spinner-border text-primary"
+                 style="width: 3rem;
+                        height: 3rem"
+                 role="status">
+              <span class="visually-hidden">{% trans "Buscando..." %}</span>
+            </div>
+            <p id="spinner-message" class="mt-2">
+              {% trans "Buscando..." %} {% trans "Esto puede tardar un momento." %}
+              <br />
+              <small>{% trans "La página se actualizará automáticamente." %}</small>
+            </p>
           </div>
-          <p id="spinner-message" class="mt-2">{% trans "Buscando..." %}</p>
         </div>
-        <div id="error-message" class="alert alert-danger" style="display: none;"></div>
-      </div>
-      <div id="results-list" class="list-group"></div>
+      {% elif podcasts %}
+        <div id="results-list" class="list-group">
+          {% for podcast in podcasts %}
+            <div class="list-group-item list-group-item-action d-flex align-items-center">
+              <img src="{{ podcast.thumbnail }}"
+                   class="me-3"
+                   style="width: 60px"
+                   alt="Thumbnail"
+                   loading="lazy" />
+              <a href="{% url 'episodes' %}?url={{ podcast.ivoox_url }}&name={{ podcast.name }}"
+                 class="flex-grow-1">{{ podcast.name }}</a>
+              <form method="post" action="{% url 'toggle_favorite' %}" class="ms-auto">
+                {% csrf_token %}
+                <input type="hidden" name="ivoox_id" value="{{ podcast.id }}" />
+                <input type="hidden" name="name" value="{{ podcast.name }}" />
+                <input type="hidden" name="ivoox_url" value="{{ podcast.ivoox_url }}" />
+                <input type="hidden" name="thumbnail_url" value="{{ podcast.thumbnail }}" />
+                {% if podcast.id in user_favorites_ids %}
+                  <button type="submit" class="btn btn-sm btn-success">{% trans "Guardado" %}</button>
+                {% else %}
+                  <button type="submit" class="btn btn-sm btn-outline-primary">{% trans "Guardar" %}</button>
+                {% endif %}
+              </form>
+            </div>
+          {% endfor %}
+        </div>
+      {% elif query %}
+        <p>{% trans 'No se encontraron podcasts para esta búsqueda.' %}</p>
+      {% endif %}
     </div>
   </div>
 {% endblock content %}
 {% block page_js %}
-  <script>
-    document.addEventListener("DOMContentLoaded", function() {
-
-      // --- 1. OBTENER ELEMENTOS Y DATOS ---
-      const container = document.getElementById("search-container");
-      const statusContainer = document.getElementById("search-status");
-      const spinner = document.getElementById("loading-spinner");
-      const spinnerMessage = document.getElementById("spinner-message");
-      const resultsList = document.getElementById("results-list");
-      const errorMessage = document.getElementById("error-message");
-
-      // Obtenemos el 'query' que Django puso en el HTML
-      console.log(container.dataset.query);
-      const query = container.dataset.query;
-
-      // Si NO hay 'query' (página de búsqueda vacía), no hacemos nada.
-      if (!query) {
-        return;
-      }
-
-      // URLs de nuestras APIs
-      stop()
-      const dataApiUrl = `{% url 'api_search_data' %}?query=${encodeURIComponent(query)}`;
-      const statusApiBaseUrl = `{% url 'api_task_status' %}`;
-      const episodePageBaseUrl = `{% url 'episodes' %}`;
-
-      // --- 2. FUNCIÓN PARA MOSTRAR RESULTADOS ---
-      function renderResults(podcasts) {
-        statusContainer.style.display = 'none'; // Ocultar spinner
-
-        if (podcasts && podcasts.length > 0) {
-          const fragment = document.createDocumentFragment();
-
-          podcasts.forEach(podcast => {
-            // Asumo que 'podcast' tiene: {name: '...', url: '...', thumbnail: '...'}
-
-            // Construimos la URL para la página de episodios
-            const episodeParams = new URLSearchParams({
-              url: podcast.url,
-              name: podcast.name
-            });
-            const episodeUrl = `${episodePageBaseUrl}?${episodeParams}`;
-
-            let a = document.createElement('a');
-            a.href = episodeUrl; // Enlaza a TU página de episodios
-            a.className = 'list-group-item list-group-item-action d-flex align-items-center';
-
-            let img = document.createElement('img');
-            img.src = podcast.thumbnail; // Asumo que hay thumbnail
-            img.className = 'me-3';
-            img.style.width = '60px';
-            img.alt = 'Thumbnail';
-            img.loading = 'lazy';
-
-            let titleDiv = document.createElement('div');
-            titleDiv.textContent = podcast.name;
-
-            a.appendChild(img);
-            a.appendChild(titleDiv);
-            fragment.appendChild(a);
-          });
-          resultsList.appendChild(fragment);
-        } else {
-          showError("{% trans 'No se encontraron podcasts para esta búsqueda.' %}");
-        }
-      }
-
-      // --- 3. FUNCIÓN PARA MOSTRAR ERRORES ---
-      function showError(message) {
-        statusContainer.style.display = 'block'; // Muestra el contenedor de estado
-        spinner.style.display = 'none'; // Oculta el spinner
-        errorMessage.textContent = message;
-        errorMessage.style.display = 'block'; // Muestra el error
-      }
-
-      // --- 4. FUNCIÓN DE VIGILANCIA (POLLING) ---
-      // (Esta función es IDÉNTICA a la de episodes.html)
-      function pollTaskStatus(taskId) {
-        const statusUrl = `${statusApiBaseUrl}?task_id=${taskId}`;
-
-        fetch(statusUrl)
-          .then(response => response.json())
-          .then(data => {
-            if (data.status === 'SUCCESS') {
-              spinnerMessage.textContent = "{% trans '¡Búsqueda completada! Cargando...' %}";
-              renderResults(data.data);
-            } else if (data.status === 'ERROR') {
-              showError(data.message || "{% trans 'La tarea de scraping ha fallado.' %}");
-            } else {
-              // 'PROCESSING'
-              spinnerMessage.textContent = "{% trans 'La tarea está en proceso... (puede tardar)' %}";
-              setTimeout(() => pollTaskStatus(taskId), 5000); // 5 segundos
-            }
-          })
-          .catch(error => {
-            console.error("Error de red durante el polling:", error);
-            showError("{% trans 'Error de red. No se puede contactar al servidor.' %}");
-          });
-      }
-
-      // --- 5. INICIO: HAY UN 'QUERY', INICIAMOS LA BÚSQUEDA ---
-
-      // Mostramos el spinner
-      statusContainer.style.display = 'block';
-      spinner.style.display = 'block';
-      spinnerMessage.textContent = "{% trans 'Iniciando búsqueda...' %}";
-
-      fetch(dataApiUrl)
-        .then(response => {
-          if (!response.ok) throw new Error("Error inicial del servidor");
-          return response.json();
-        })
-        .then(data => {
-          if (data.status === 'SUCCESS') {
-            // ¡Cache HIT!
-            renderResults(data.data);
-          } else if (data.status === 'PROCESSING') {
-            // ¡Cache MISS! Iniciamos la vigilancia (polling).
-            spinnerMessage.textContent = "{% trans 'Búsqueda en curso... Esto puede tardar un momento.' %}";
-            pollTaskStatus(data.task_id);
-          } else {
-            // Otro tipo de error
-            showError(data.message || "{% trans 'Ha ocurrido un error inesperado.' %}");
-          }
-        })
-        .catch(error => {
-          console.error("Error al llamar a api_search_data:", error);
-          showError("{% trans 'No se pudo iniciar la búsqueda.' %}");
-        });
-
-    });
-  </script>
+  {# ¡Este bloque ahora está vacío para esta página! #}
 {% endblock page_js %}

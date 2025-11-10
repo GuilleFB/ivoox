@@ -130,7 +130,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-force-single-line = true
+force-single-line = false
 
 [dependency-groups]
 dev = [

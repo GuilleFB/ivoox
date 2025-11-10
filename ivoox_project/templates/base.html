@@ -41,6 +41,7 @@
         {% if user.is_authenticated %}
           Hola, {{ user.name }}! |
           <a href="{% url 'search' %}">Buscar</a> |
+          <a href="{% url 'favorites' %}">Mis Favoritos</a> |
           <a href="{% url 'account_logout' %}">Cerrar Sesión</a>
         {% else %}
           <a href="{% url 'account_login' %}">Iniciar Sesión</a> |
@@ -50,5 +51,7 @@
       {% block content %}
       {% endblock content %}
     </div>
+    {% block page_js %}
+    {% endblock page_js %}
   </body>
 </html>
